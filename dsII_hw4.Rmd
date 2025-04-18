@@ -1,0 +1,349 @@
+---
+title: 'Data Science II: HW4'
+author: "Shayne Estill"
+date: "04/21/2025"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+```
+
+# Libraries
+
+```{r}
+
+# Load libraries
+library(tidyverse)
+library(caret)
+library(ggplot2)  
+library(patchwork)
+library(corrplot)
+library(mgcv)
+library(tidymodels)
+library(earth)
+library(boot) 
+library(table1)
+library(knitr)
+library(pls)
+library(glmnet)
+library(pROC)
+library(pdp)
+library(MASS)
+library(ISLR)
+library(mlbench)
+library(rpart)
+library(rpart.plot)
+library(party)
+library(partykit)
+```
+
+1. In this exercise, we will build tree-based models using the College data (see “College.csv” in Homework 2). The response variable is the out-of-state tuition (Outstate).
+Partition the dataset into two parts: training data (80%) and test data (20%).
+
+```{r}
+college_data = read_csv(file = "/Users/shayneestill/Desktop/Data Science II/dsII_hw4/College.csv", 
+                        na = c("NA", ".", "")) |>
+                        janitor::clean_names()
+drop_na(college_data)
+set.seed(1)
+
+data_split <- initial_split(college_data, prop = 0.8)
+
+# Extract the training and test data
+training_data <- training(data_split)
+testing_data <- testing(data_split)
+
+# training data
+x <- model.matrix(outstate ~ perc_alumni, training_data)[, -1]
+y <- training_data$outstate
+
+# test data
+x2 <- model.matrix(outstate ~ perc_alumni,testing_data)[, -1]
+y2 <- testing_data$outstate
+```
+
+
+(a) Build a regression tree on the training data to predict the response (10pts). Create
+a plot of the tree (10pts).
+
+```{r}
+set.seed(30)
+tree1 <- rpart(formula = outstate ~ . ,
+data = training_data,
+control = rpart.control(cp = 0))
+## plot.rpart
+# plot(tree1)
+# text(tree1)
+rpart.plot(tree1)
+```
+
+```{r}
+set.seed(30)
+tree2 <- rpart(outstate ~ . ,
+data = training_data,
+control = rpart.control(cp = 0.1))
+rpart.plot(tree2)
+```
+
+```{r}
+printcp(tree1)
+```
+
+```{r}
+cpTable <- tree2$cptable
+plotcp(tree1)
+```
+
+```{r}
+minErr <- which.min(cpTable[,4])
+tree3 <- rpart::prune(tree1, cp = cpTable[minErr,1])
+rpart.plot(tree3)
+```
+
+```{r}
+plot(as.party(tree3))
+```
+
+
+(b) Perform random forest on the training data (10pts). Report the variable importance
+(5pts) and the test error (5pts).
+
+```{r}
+
+```
+
+(c) Perform boosting on the training data (10pts). Report the variable importance (5pts)
+and the test error (5pts).
+
+```{r}
+
+```
+
+
+2. This problem is based on the data “auto.csv” in Homework 3. Split the dataset into
+two parts: training data (70%) and test data (30%).
+
+(a) Build a classification tree using the training data, with mpg cat as the response
+(10pts). Which tree size corresponds to the lowest cross-validation error? Is this the
+same as the tree size obtained using the 1 SE rule (10pts)?
+
+```{r}
+
+```
+
+
+(b) Perform boosting on the training data and report the variable importance (10pts).
+Report the test data performance (10pts).
+
+```{r}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+In this problem, you will develop a model to predict whether a given car gets high or
+low gas mileage based on the dataset “auto.csv”. The dataset contains 392 observations.
+The response variable is “mpg cat”, which indicates whether the miles per gallon of a car
+is high or low. The predictors include both continuous and categorical variables:
+• cylinders: Number of cylinders between 4 and 8
+• displacement: Engine displacement (cu. inches)
+• horsepower: Engine horsepower
+• weight: Vehicle weight (lbs.)
+• acceleration: Time to accelerate from 0 to 60 mph (sec.)
+• year: Model year (modulo 100)
+• origin: Origin of car (1. American, 2. European, 3. Japanese)
+
+Split the dataset into two parts: training data (70%) and test data (30%).
+
+```{r}
+# Load auto data
+auto_data = read_csv(file = "/Users/shayneestill/Desktop/Data Science II/dsII_hw3/auto.csv", 
+                        na = c("NA", ".", "")) |>
+                        janitor::clean_names() |>
+  mutate(mpg_cat = ifelse(mpg_cat == "high", 1, 0))
+
+drop_na(auto_data)
+set.seed(0401)
+
+data_split <- initial_split(auto_data, prop = 0.8)
+
+ctrl1 <- trainControl(method = "cv", number = 10)
+
+# Extract the training and test data
+training_data <- training(data_split)
+testing_data <- testing(data_split)
+
+```
+
+
+(a) Perform logistic regression analysis. Are there redundant predictors in your model?
+If so, identify them. If there are none, please provide an explanation.
+
+```{r}
+set.seed(0401)
+
+glm.fit <- glm(mpg_cat ~ .,
+data = training_data,
+family = binomial(link = "logit"))
+
+summary(glm.fit)
+```
+
+Yes, there are redundant predictors in this model. cylinders, displacement, horsepower, acceleration, and origin all have a p-value less than 0.05 and are not statistically significant. 
+
+```{r}
+# predict probabilities for test data
+set.seed(0401)
+
+test.pred.prob <- predict(glm.fit, newdata = testing_data,
+type = "response")
+
+# convert probabilities to binary predictions using a 0.5 cutoff
+test.pred <- rep(0, length(test.pred.prob))
+test.pred[test.pred.prob > 0.5] <- 1
+
+# generate confusion matrix
+confusionMatrix(data = as.factor(test.pred),
+reference = as.factor(testing_data$mpg_cat),
+positive = "1")
+```
+
+```{r}
+set.seed(0401)
+# generate ROC curve for the logistic regression model
+roc.glm <- roc(testing_data$mpg_cat, test.pred.prob)
+
+# plot the ROC curve and the smoothed ROC curve
+plot(roc.glm, legacy.axes = TRUE, print.auc = TRUE)
+plot(smooth(roc.glm), col = 4, add = TRUE)
+```
+
+AUC = 0.975. The larger the AUC, the better the classifier. The logistic regression is considered very good. 
+
+
+(b) Train a multivariate adaptive regression spline (MARS) model. Does the MARS
+model improve prediction performance compared to logistic regression?
+
+```{r}
+set.seed(0401)
+
+training_data$mpg_cat <- factor(training_data$mpg_cat, levels = c(0, 1), labels = c("low", "high"))
+
+ctrl <- trainControl(method = "cv", number = 10,
+summaryFunction = twoClassSummary,
+classProbs = TRUE)
+
+```
+
+
+```{r}
+set.seed(0401)
+
+model.mars <- train(mpg_cat ~ .,
+data = training_data,
+method = "earth",
+tuneGrid = expand.grid(degree = 1:4,
+nprune = 2:20),
+metric = "ROC",
+trControl = ctrl)
+
+plot(model.mars)
+summary(model.mars)
+
+```
+
+```{r}
+coef(model.mars$finalModel)
+```
+
+```{r}
+prob.mars <- predict(model.mars, newdata = testing_data,
+type = "prob")
+
+# convert probabilities to binary predictions using a 0.5 cutoff
+pred.mars <- rep("high", length(prob.mars))
+pred.mars[prob.mars > 0.5] = "low"
+
+# generate confusion matrix
+#confusionMatrix(data = as.factor(pred.mars),
+#reference = testing_data$mpg_cat,
+#positive = "low")
+```
+
+
+MARS improves? model prediction compared to logistic regression because ...
+
+(c) Perform linear discriminant analysis using the training data. Plot the linear discriminant(s).
+```{r}
+lda.fit <- lda(mpg_cat~., data = training_data)
+# Plot the histogram of the discriminant variables (Z-variable,Z = aˆT*X) for each group
+plot(lda.fit)
+
+A <- lda.fit$scaling
+```
+
+```{r}
+head(predict(lda.fit)$x)
+```
+
+```{r}
+mean(predict(lda.fit)$x)
+```
+
+```{r}
+lda.pred <- predict(lda.fit, newdata = testing_data)
+head(lda.pred$posterior)
+```
+
+
+```{r}
+set.seed(0401)
+
+ctrl <- trainControl(method = "repeatedcv", repeats = 5,
+summaryFunction = twoClassSummary,
+classProbs = TRUE)
+
+# train LDA model with CV
+#set.seed(0401)
+#model.lda <- train(x = training_data[, 1:8],
+#y = training_data$mpg_cat,
+#method = "lda",
+#metric = "ROC",
+#trControl = ctrl)
+
+# predict probabilities for test data
+#lda.pred2 <- predict(model.lda, newdata = testing_data, type = "prob")
+#head(lda.pred2)
+```
+
+
+(d) Which model will you choose to predict the response variable? Plot its ROC curve
+and report the AUC. Next, select a probability threshold to classify observations and
+compute the confusion matrix. Briefly interpret what the confusion matrix indicates
+about your model’s performance.
+##
+
+res <- resamples(list(GLM = model.glm,
+LDA = lda.fit,
+MARS = model.mars))
+summary(res)
+
+
